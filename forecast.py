@@ -8,13 +8,15 @@ from dotenv import load_dotenv
 
 basedir = path.abspath(path.dirname(__file__))
 
-# Load environment variables from .env file
-if not load_dotenv(path.join(basedir, ".env")):
-    print(colored("Error: .env file not found. Please create one with your API key.", 'red'))
+# [Copilot] Check if the .env file exists in the basedir. If not, print an error message in red and exit the program.
+if not path.exists(path.join(basedir, '.env')):
+    print(colored("Error: .env file not found. Please create a .env file in the base directory.", 'red'))
     sys.exit(1)
 
-# Load the API key from environment variables
+load_dotenv(path.join(basedir, ".env"))
 API_KEY = environ.get("API_KEY")
+
+# [Copilot] If API_KEY is not found, print an error message in red and exit the program.
 if not API_KEY:
     print(colored("Error: API_KEY not found in .env file. Please add your OpenWeatherMap API key.", 'red'))
     sys.exit(1)
@@ -23,7 +25,7 @@ GEOCODE_URL = 'http://api.openweathermap.org/geo/1.0/direct'
 FORECAST_URL = 'https://api.openweathermap.org/data/2.5/forecast'
 
 # This function fetches the latitude and longitude of a given city
-def get_coordinates(city, country):
+def get_coordinates(city, country=None):
     """
     Fetches the latitude and longitude of a given city using OpenWeatherMap API.
         :param city: The name of the city.
@@ -31,9 +33,13 @@ def get_coordinates(city, country):
         :return: A tuple containing the latitude and longitude of the city, or None if not found.
     """
     try:
-        params = {'q': city + ',' + country, 'limit': 1, 'appid': API_KEY}
+        if country:
+            params = {'q': city + ',' + country, 'limit': 1, 'appid': API_KEY}
+        else:
+            params = {'q': city, 'limit': 1, 'appid': API_KEY}
         response = requests.get(GEOCODE_URL, params=params)
         response.raise_for_status()
+    # [Copilot] Handle all potential exceptions including HTTP errors, Request exceptions, and general exceptions. Provide user-friendly error messages for each case.
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
             print(colored(f'Error: City {city} not found.', 'red'))
@@ -53,7 +59,7 @@ def get_coordinates(city, country):
             print(colored(f'Error: Unable to fetch coordinates for city {city}.', 'red'))
 
 # This function fetches a weather forecast for a location specified by its latitude and longitude
-def get_forecast(lat, lon):
+def get_forecast(city, lat, lon):
     """
     Fetches a weather forecast for a location specified by its latitude and longitude using OpenWeatherMap API.
         :param lat: Latitude of the location.
@@ -70,9 +76,10 @@ def get_forecast(lat, lon):
         }
         response = requests.get(FORECAST_URL, params=params)
         response.raise_for_status()
+    # [Copilot] Handle all potential exceptions including HTTP errors, Request exceptions, and general exceptions. Provide user-friendly error messages for each case.
     except requests.exceptions.HTTPError as err:
         if response.status_code == 404:
-            print(colored(f'Error: Unable to fetch forecast data for coordinates lat:{lat} lon:{lon}', 'red'))
+            print(colored(f'Error: City {city} not found.', 'red'))
         elif response.status_code == 401:
             print(colored(f'Error: Invalid API key', 'red'))
         else:
@@ -100,31 +107,36 @@ def print_weather(city, country, data):
             temp = colored(forecast['main']['temp'], 'green')
             desc = colored(forecast['weather'][0]['description'], 'blue')
             print('\t{}: {} degrees F, {}'.format(time, temp, desc))
+    # [Copilot] Handle all potential exceptions
     except KeyError as err:
         print(colored('Error: ', 'red'), err)
     except Exception as err:
         print(colored('Error: ', 'red'), err)
 
+# [Copilot] Define the main function. Use argparse to parse command line arguments for a city and optionally a country. Validate the arguments, fetching coordinates and a weather forecast for the city if valid, else print an error and exit. If coordinates and forecast data are found, print the weather data.
 def main():
-    # Parse command line arguments using argparse
-    parser = argparse.ArgumentParser(description="Get the current weather information for a city")
-    parser.add_argument('city', help='City to get forecast for')
-    parser.add_argument('--country', default='us', help='2-letter country code of the city to get forecast for (default: "us")')
-
-    # If a city name was provided, fetch and print a weather forecast for it
-    # Otherwise, print an error message and exit
+    parser = argparse.ArgumentParser(description='Fetches and displays the weather forecast for a given location.')
+    parser.add_argument('city', type=str, help='The name of the city')
+    parser.add_argument('--country', type=str, help='The country code of the city')
     try:
         args = parser.parse_args()
+        city = args.city
+        country = args.country
     except SystemExit:
         print(colored("Error: Invalid command. You must provide a city name. Example: ", 'red') + colored("python forecast.py 'New York'", 'yellow'))
         sys.exit(1)
 
-    # Get coordinates for the city and fetch and print the weather data
-    coordinates = get_coordinates(args.city, args.country)
-    if coordinates:
-        forecast_data = get_forecast(*coordinates)
-        if forecast_data:
-            print_weather(args.city, args.country, forecast_data)
+    coords = get_coordinates(city, country)
+    if not coords:
+        sys.exit(1)
+    else:
+        lat, lon = coords
+
+    forecast = get_forecast(city, lat, lon)
+    if not forecast:
+        sys.exit(1)
+    else:
+        print_weather(city, country, forecast)
 
 # This is the main entry point of the script
 if __name__ == '__main__':
